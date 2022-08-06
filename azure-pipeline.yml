@@ -20,7 +20,7 @@ stages:
   - job: Build
     steps:
     - task: Docker@2
-      displayName: Build API Image 
+      displayName: Build Docker Image 
       inputs:
         command: build
         repository: $(repository)
@@ -39,7 +39,7 @@ stages:
       condition: |
         and (
           succeeded(),
-          in(variables['Build.SourceBranch'], 'refs/heads/master')
+          eq(variables['Build.SourceBranch'], 'refs/heads/master')
         )
       inputs:
         targetPath: $(Build.ArtifactStagingDirectory)
@@ -51,7 +51,7 @@ stages:
   condition: |
     and (
       succeeded(),
-      in(variables['Build.SourceBranch'], 'refs/heads/master')
+      eq(variables['Build.SourceBranch'], 'refs/heads/master')
     )
   jobs:
   - deployment: Deploy
@@ -65,7 +65,6 @@ stages:
               displayName: Download Artifact
               inputs:
                 source: current
-                project: prudential
                 artifactName: helloworld
             - task: Bash@3
               displayName: Load Docker Image and Tag
@@ -73,7 +72,7 @@ stages:
               inputs:
                 targetType: "inline"
                 script: |
-                  docker load -i $(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar.gz
+                  docker load -i "$(Pipeline.Workspace)/$(Build.BuildId).tar.gz"
                   docker tag $(repository):$(Build.BuildId) $(repository):latest
             - task: Docker@2
               displayName: Push Image to Docker Hub
