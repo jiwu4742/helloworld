@@ -1,0 +1,87 @@
+---
+trigger:
+- master
+- feature/*
+
+pr:
+- master
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+  repository: "jiwu4742/helloworld"
+  containerRegistry: "docker-hub"
+  DOCKER_BUILDKIT: 1
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    steps:
+    - task: Docker@2
+      displayName: Build API Image 
+      inputs:
+        command: build
+        repository: $(repository)
+        buildContext: "**"
+        tags: |
+          $(Build.BuildId)
+    - task: Bash@3
+      displayName: Save Docker Image
+      condition: succeeded() 
+      inputs:
+        targetType: "inline"
+        script: |
+          docker save $(repository):$(Build.BuildId) | gzip > $(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar.gz
+    - task: PublishPipelineArtifact@1
+      displayName: Publish Docker Image as Artifact
+      condition: |
+        and (
+          succeeded(),
+          in(variables['Build.SourceBranch'], 'refs/heads/master')
+        )
+      inputs:
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: helloworld
+        artifactType: pipeline
+
+- stage: Deploy 
+  dependsOn: Build
+  condition: |
+    and (
+      succeeded(),
+      in(variables['Build.SourceBranch'], 'refs/heads/master')
+    )
+  jobs:
+  - deployment: Deploy
+    displayName: Add Image to Docker Hub
+    environment: helloworld 
+    strategy:
+      runOnce:
+        deploy: 
+          steps:
+            - task: DownloadPipelineArtifact@2
+              displayName: Download Artifact
+              inputs:
+                source: current
+                project: prudential
+                artifactName: helloworld
+            - task: Bash@3
+              displayName: Load Docker Image and Tag
+              condition: succeeded() 
+              inputs:
+                targetType: "inline"
+                script: |
+                  docker load -i $(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar.gz
+                  docker tag $(repository):$(Build.BuildId) $(repository):latest
+            - task: Docker@2
+              displayName: Push Image to Docker Hub
+              inputs:
+                command: push 
+                containerRegistry: $(containerRegistry)
+                repository: $(repository)
+                tags: |
+                  $(Build.BuildId)
+                  latest
+            # If there is a AKS cluster, image can be applied as a deployment
